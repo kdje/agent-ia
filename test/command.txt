@@ -1,0 +1,5 @@
+py agent_architect.py -i req.json
+py agent_security.py -i req.json
+py agent_observability.py -i req.json
+py agent_data_contract.py -i req.json
+py agent_migration.py -i req.json

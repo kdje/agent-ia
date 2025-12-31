@@ -1,0 +1,7 @@
+{
+  "context": "Intégrer SAP S/4 RISE avec CRM et WMS via MuleSoft, events + APIs",
+  "systems": ["SAP S/4 RISE", "MuleSoft", "CRM", "WMS"],
+  "constraints": ["No PII in logs", "99.9% availability", "EU hosting"],
+  "data_objects": ["SalesOrder", "Delivery", "Invoice"],
+  "triggers": ["Order created", "Delivery shipped"]
+}

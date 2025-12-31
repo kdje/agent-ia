@@ -1,0 +1,182 @@
+{
+  "info": {
+    "name": "Integration Architect Copilot API (Local)",
+    "_postman_id": "7c8a8b3b-7c4f-4c01-9d2e-0c2f6d6c2d9a",
+    "description": "Collection de tests pour l'API FastAPI du Integration Architect Copilot (Ollama host + Qdrant docker).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Response has status=ok', function () {",
+              "  const j = pm.response.json();",
+              "  pm.expect(j.status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Design (Qwen 14B)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Synchroniser les commandes entre S/4HANA RISE et un WMS. Near-real-time, audit, idempotence.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"WMS\"\n  ],\n  \"constraints\": [\n    \"SLA 99.9%\",\n    \"50k commandes/jour\",\n    \"PII\",\n    \"replay possible\"\n  ],\n  \"data_objects\": [\n    \"Sales Order\",\n    \"Delivery\",\n    \"Status\"\n  ],\n  \"triggers\": [\n    \"event\"\n  ],\n  \"model\": \"{{modelQwen}}\",\n  \"top_k\": 8,\n  \"rag\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/design",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "design"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Response has result.recommended_option', function () {",
+              "  const j = pm.response.json();",
+              "  pm.expect(j).to.have.property('result');",
+              "  pm.expect(j.result).to.have.property('recommended_option');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Design (Mistral Nemo 12B)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Synchroniser les commandes entre S/4HANA RISE et un WMS. Near-real-time, audit, idempotence.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"WMS\"\n  ],\n  \"constraints\": [\n    \"SLA 99.9%\",\n    \"50k commandes/jour\",\n    \"PII\",\n    \"replay possible\"\n  ],\n  \"data_objects\": [\n    \"Sales Order\",\n    \"Delivery\",\n    \"Status\"\n  ],\n  \"triggers\": [\n    \"event\"\n  ],\n  \"model\": \"{{modelNemo}}\",\n  \"top_k\": 8,\n  \"rag\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/design",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "design"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Response has result.options array', function () {",
+              "  const j = pm.response.json();",
+              "  pm.expect(j).to.have.property('result');",
+              "  pm.expect(j.result).to.have.property('options');",
+              "  pm.expect(Array.isArray(j.result.options)).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Design (No RAG)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Même besoin mais sans utiliser la base documentaire (RAG désactivé).\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"WMS\"\n  ],\n  \"data_objects\": [\n    \"Sales Order\"\n  ],\n  \"triggers\": [\n    \"event\"\n  ],\n  \"model\": \"{{modelQwen}}\",\n  \"top_k\": 0,\n  \"rag\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/design",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "design"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "modelQwen",
+      "value": "qwen2.5:14b-instruct"
+    },
+    {
+      "key": "modelNemo",
+      "value": "mistral-nemo:12b-instruct"
+    }
+  ]
+}

@@ -1,0 +1,173 @@
+
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage -e QDRANT__TELEMETRY_DISABLED=true qdrant/qdrant
+
+python cli.py design --model "qwen2.5:14b-instruct" --context "Sync commandes S/4 -> WMS, near-real-time, audit, idempotence." --systems "SAP S/4 RISE, MuleSoft, WMS" --constraints "SLA 99.9%;50k/j;PII" --data-objects "Sales Order, Delivery" --triggers "event"
+
+python cli.py design --model "mistral-nemo:12b-instruct" --context "Même besoin" --systems "SAP S/4 RISE, MuleSoft, WMS"
+
+
+Switch via variable d’environnement (pratique)
+
+Définir le modèle par défaut :
+
+set COPILOT_MODEL=qwen2.5:14b-instruct   # Windows (cmd)
+# ou
+export COPILOT_MODEL=qwen2.5:14b-instruct # Linux/macOS
+
+------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------
+
+Tu as raison sur le constat : dans l’état actuel, ton “agent” est surtout un wrapper RAG + prompt + schéma JSON autour d’un LLM. Ce n’est pas encore un agent “autonome” (pas d’outils, pas d’actions, pas de coordination). La valeur ajoutée existe quand même, mais elle est limitée.
+
+Valeur ajoutée actuelle (même sans outils)
+
+Standardisation / livrable
+Tu ne fais pas “du chat”, tu produis un deliverable stable (options, ADR, test plan, checklist). Ça se versionne, se relit, se compare.
+
+Alignement entreprise via RAG
+Même sans tools, le RAG te donne un modèle “qui répond selon tes standards” et peut citer des sources. C’est la grosse différence avec “juste un modèle exposé via API”.
+
+Réduction des hallucinations
+Le modèle brut invente; le Copilot s’appuie sur ta KB + impose des règles + corrige le JSON. Ça augmente la fiabilité.
+
+Mais oui : si tu veux une vraie valeur “agent”, il faut lui donner des capacités d’action.
+
+Ce qui transforme ton Copilot en “vrai agent” (valeur forte)
+
+Je te propose une roadmap très concrète, orientée “Integration Tech Lead SAP/Mule”.
+
+Niveau 1 — Tool use (immédiat, grosse valeur)
+
+Le Copilot n’écrit plus seulement un design, il produit des artefacts.
+
+Outils/action possibles :
+
+Générer un ADR et l’enregistrer dans kb/adrs/ADR-xxx.md
+
+Générer un OpenAPI (YAML/JSON) ou AsyncAPI (events) depuis le design
+
+Générer un template MuleSoft (structure, erreurs, retry, DLQ, correlation-id)
+
+Générer un contract d’erreur standard (codes, catégories, payload)
+
+Générer un test pack (Postman + cas de tests + assertions)
+
+➡️ Là tu gagnes du temps “réel” : tu passes de “texte” à “fichiers exploitables”.
+
+Niveau 2 — MCP (connecteurs vers ton écosystème)
+
+Tu connectes l’agent à des systèmes de travail (lecture/écriture).
+
+MCP utiles pour toi :
+
+Git (création PR ADR/OpenAPI/templates)
+
+Confluence (publication design doc)
+
+Jira (création de tickets: open questions, actions, risques)
+
+ServiceNow/ITSM (si applicable)
+
+Dépôt “standards” (KB auto-sync)
+
+➡️ Là, le Copilot devient ton “assistant de delivery”.
+
+Niveau 3 — A2A (plusieurs agents spécialisés)
+
+Au lieu d’un gros agent, tu as une équipe :
+
+Architect Agent : options + recommandation + ADR
+
+Security Agent : threat modeling + contrôles + gaps
+
+Observability Agent : logs/metrics/tracing + SLO + alerting
+
+Data Contract Agent : mapping + schema + versioning
+
+Migration Agent : cutover + rollback + runbook
+
+Un orchestrateur consolide et arbitre.
+
+➡️ Là tu obtiens un processus comparable à une “revue d’architecture” multi-discipline.
+
+“Il décide pas” : comment lui donner un vrai rôle de décision
+
+Tu peux formaliser la décision via une grille de scoring (outil deterministe) :
+
+NFR fit (latency, throughput, resilience)
+
+Complexity (dev/ops)
+
+Risk (data loss, duplication, security)
+
+Cost (runtime, licensing)
+
+Maintainability (support & monitoring)
+
+L’agent :
+
+propose 2–3 options
+
+remplit la grille (avec justification)
+
+calcule le score (outil)
+
+recommande l’option gagnante
+
+➡️ Ça devient une décision auditée, pas “au feeling”.
+
+En bref : aujourd’hui ton agent est un “Copilot doc”
+
+La vraie valeur “agent” arrive quand tu ajoutes :
+
+Tools (générer/écrire/créer)
+
+MCP (intégration avec Git/Jira/Confluence)
+
+A2A (agents spécialisés + orchestrateur)
+
+Scoring (décision traçable)
+
+Si tu veux, on le fait “pas à pas” dans ton repo
+
+Je te propose un next step simple qui change tout sans complexité :
+
+Ajouter un endpoint API /artifacts qui génère :
+
+ADR.md
+
+design-doc.md
+
+openapi.yaml (si API) ou asyncapi.yaml (si event)
+
+postman_collection.json
+
+Ajouter une commande CLI cli.py artifacts --out ./out/
+
+Ça ne nécessite pas MCP ni A2A, mais ça te donne de vrais outputs réutilisables.
+
+Tu veux qu’on parte sur ce niveau 1 (Artifacts Generator) ?
+//////////////////
+
+User → FastAPI → Agent → (via FastAPI) → Tools → Agent → FastAPI → User
+
+Utilisateur / Client
+        ↓
+   FastAPI (endpoint /design)
+        ↓
+   AGENT (exécuté DANS FastAPI)
+        ↓   (décide)
+   outil : call_mcp / call_qdrant / call_ollama
+        ↓   (exécute)
+   FastAPI (gateway / contrôles)
+        ↓
+   MCP / Qdrant / Ollama
+        ↓
+   Résultats structurés
+        ↑
+   AGENT (interprète / adapte)
+        ↑
+   FastAPI (sérialise la réponse)
+        ↑
+   Utilisateur
+

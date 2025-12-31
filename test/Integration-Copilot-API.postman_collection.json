@@ -1,0 +1,208 @@
+{
+  "info": {
+    "name": "Integration Copilot API (multi-agents)",
+    "_postman_id": "3f1e4d4a-0d46-4bb7-9b1a-7e0f90f8e1a1",
+    "description": "Collection Postman pour l'API Integration Copilot (agents: architect/security/observability/data-contract/migration) + endpoint design agrégé.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Design (all agents)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"As-is: SAP S/4 RISE publishes IDocs. To-be: integrate with MuleSoft to expose OrderStatus API to CRM.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"CRM\"\n  ],\n  \"constraints\": [\n    \"PII must be masked in logs\",\n    \"mTLS between MuleSoft and API consumers\"\n  ],\n  \"data_objects\": [\n    \"Order\",\n    \"OrderStatus\",\n    \"Customer\"\n  ],\n  \"triggers\": [\n    \"OrderCreated\",\n    \"OrderStatusChanged\"\n  ],\n  \"rag\": true,\n  \"top_k\": 8,\n  \"model_arch\": \"qwen2.5:14b-instruct\",\n  \"model_sec\": \"mistral-nemo:latest\",\n  \"model_obs\": \"mistral-nemo:latest\",\n  \"model_dc\": \"qwen2.5:14b-instruct\",\n  \"model_mig\": \"mistral-nemo:latest\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/design",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "design"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Architect Agent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Design integration between SAP S/4 RISE and MuleSoft for OrderStatus API.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"CRM\"\n  ],\n  \"constraints\": [\n    \"Reuse existing SAP APIs where possible\",\n    \"Prefer async patterns for resilience\"\n  ],\n  \"data_objects\": [\n    \"OrderStatus\"\n  ],\n  \"triggers\": [\n    \"OrderStatusChanged\"\n  ],\n  \"rag\": true,\n  \"top_k\": 8,\n  \"model_arch\": \"qwen2.5:14b-instruct\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/architect",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "architect"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Security Agent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Threat model for SAP S/4 RISE to MuleSoft to CRM integration.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"CRM\"\n  ],\n  \"constraints\": [\n    \"OAuth2 for external consumers\",\n    \"mTLS internal\",\n    \"PII handling\"\n  ],\n  \"data_objects\": [\n    \"Order\",\n    \"Customer\"\n  ],\n  \"triggers\": [\n    \"OrderCreated\"\n  ],\n  \"rag\": true,\n  \"top_k\": 8,\n  \"model_sec\": \"mistral-nemo:latest\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/security",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "security"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Observability Agent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Define logging/metrics/tracing + SLOs for MuleSoft integration.\",\n  \"systems\": [\n    \"MuleSoft\",\n    \"API Gateway\",\n    \"CRM\"\n  ],\n  \"constraints\": [\n    \"Keep logs 30 days\",\n    \"Mask PII\",\n    \"Trace correlation across hops\"\n  ],\n  \"data_objects\": [\n    \"OrderStatus\"\n  ],\n  \"triggers\": [\n    \"APIRequest\"\n  ],\n  \"rag\": true,\n  \"top_k\": 8,\n  \"model_obs\": \"mistral-nemo:latest\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/observability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "observability"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Data Contract Agent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Define mapping and schema between SAP OrderStatus and CRM OrderStatus.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"CRM\"\n  ],\n  \"constraints\": [\n    \"Backward compatibility for consumers\"\n  ],\n  \"data_objects\": [\n    \"OrderStatus\"\n  ],\n  \"triggers\": [\n    \"OrderStatusChanged\"\n  ],\n  \"rag\": true,\n  \"top_k\": 8,\n  \"model_dc\": \"qwen2.5:14b-instruct\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/data-contract",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "data-contract"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Migration Agent",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Go-live migration plan for new MuleSoft flows replacing legacy integration.\",\n  \"systems\": [\n    \"Legacy ESB\",\n    \"MuleSoft\",\n    \"SAP S/4 RISE\",\n    \"CRM\"\n  ],\n  \"constraints\": [\n    \"Zero-downtime preferred\",\n    \"Rollback within 30 minutes\"\n  ],\n  \"data_objects\": [\n    \"Order\",\n    \"OrderStatus\"\n  ],\n  \"triggers\": [\n    \"Cutover\"\n  ],\n  \"rag\": true,\n  \"top_k\": 8,\n  \"model_mig\": \"mistral-nemo:latest\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/migration",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "migration"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Design (no RAG)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": \"Same request but without KB retrieval.\",\n  \"systems\": [\n    \"SAP S/4 RISE\",\n    \"MuleSoft\",\n    \"CRM\"\n  ],\n  \"constraints\": [],\n  \"data_objects\": [],\n  \"triggers\": [],\n  \"rag\": false,\n  \"top_k\": 0\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/design",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "design"
+          ]
+        }
+      }
+    }
+  ]
+}
