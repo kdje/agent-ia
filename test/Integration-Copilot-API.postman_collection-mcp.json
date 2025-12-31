@@ -1,0 +1,25 @@
+{
+  "info": {
+    "name": "agent-ia stack (API + MCP)",
+    "_postman_id": "8c9d4ac6-77f6-4c9e-b2c1-111111111111",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "MCP - Health",
+      "request": { "method": "GET", "url": "http://localhost:8001/health" }
+    },
+    {
+      "name": "MCP - Tools (debug)",
+      "request": { "method": "GET", "url": "http://localhost:8001/tools" }
+    },
+    {
+      "name": "API - Health (si existant)",
+      "request": { "method": "GET", "url": "http://localhost:8000/health" }
+    },
+    {
+      "name": "Ollama - Tags",
+      "request": { "method": "GET", "url": "http://localhost:11434/api/tags" }
+    }
+  ]
+}
