@@ -13,12 +13,6 @@ from . import agent_data_contract
 from . import agent_migration
 
 import os
-import asyncio
-
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-
-import traceback
 import httpx
 
 
@@ -54,32 +48,22 @@ def _req_to_dict(req: DesignRequest) -> Dict[str, Any]:
     }
 
 # MCP
-# MCP
+def _mcp_base_url() -> str:
+    # MCP_URL = http://mcp:8001/mcp -> base = http://mcp:8001
+    return MCP_URL.removesuffix("/mcp") if MCP_URL.endswith("/mcp") else MCP_URL.rstrip("/")
+
 async def _mcp_call(tool: str, args: Dict[str, Any]) -> Any:
     """
-    Appelle un tool MCP via transport Streamable HTTP.
-    Compatible avec les versions où streamablehttp_client() renvoie:
-      - (read, write)
-      - (read, write, close)
-      - ou un objet avec .read/.write
+    Appelle le serveur MCP via endpoint HTTP /call (stable).
     """
-    async with streamablehttp_client(MCP_URL) as conn:
-        # 1) cas tuple/list
-        if isinstance(conn, (tuple, list)):
-            if len(conn) < 2:
-                raise RuntimeError(f"Unexpected MCP conn tuple length: {len(conn)}")
-            read, write = conn[0], conn[1]
-        else:
-            # 2) cas objet
-            read = getattr(conn, "read", None)
-            write = getattr(conn, "write", None)
-            if read is None or write is None:
-                raise RuntimeError(f"Unexpected MCP conn type: {type(conn)}")
-
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            resp = await session.call_tool(tool, args)
-            return resp.content
+    base = _mcp_base_url()
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        r = await client.post(f"{base}/call", json={"tool": tool, "args": args})
+        r.raise_for_status()
+        data = r.json()
+        if "error" in data and data["error"]:
+            raise RuntimeError(data["error"])
+        return data.get("content")
 
 
 
@@ -309,17 +293,17 @@ import traceback
 
 @app.get("/mcp-health", operation_id="mcp_health_http")
 async def mcp_health_http():
-    base = MCP_URL.removesuffix("/mcp") if MCP_URL.endswith("/mcp") else MCP_URL
+    base = _mcp_base_url()
     async with httpx.AsyncClient(timeout=5.0) as client:
         h = await client.get(f"{base}/health")
         t = await client.get(f"{base}/tools")
     return {
         "ok": True,
-        "mode": "http",
         "mcp_url": MCP_URL,
         "health": h.json(),
         "tools": t.json().get("tools", []),
     }
+
 
 
 @app.get("/mcp-proto-health", operation_id="mcp_health_proto")
@@ -346,13 +330,14 @@ async def mcp_health_proto():
             })
         raise HTTPException(status_code=500, detail={"mode": "mcp-proto", "error": str(e)})
 
-@app.get("/mcp-proto-ping", operation_id="mcp_proto_ping")
-async def mcp_proto_ping():
+@app.get("/mcp-ping", operation_id="mcp_ping")
+async def mcp_ping():
     out = await _mcp_call("ollama_generate", {
         "model": "qwen2.5:14b-instruct",
-        "prompt": "Réponds uniquement: pong"
+        "prompt": "Réponds uniquement: pong",
     })
     return {"ok": True, "out": out}
+
 
 
 

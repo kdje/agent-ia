@@ -7,11 +7,13 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.models import Filter
 
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Mount
 
 from mcp.server.fastmcp import FastMCP
 
+# ---------------- Config ----------------
 MCP_MOUNT_PATH = os.getenv("MCP_MOUNT_PATH", "/mcp")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
@@ -27,22 +29,24 @@ JIRA_EPIC_NAME_FIELD = os.getenv("JIRA_EPIC_NAME_FIELD", "")  # ex: customfield_
 
 qdrant = QdrantClient(url=QDRANT_URL)
 
-# Streamable HTTP MCP
+# MCP server
 mcp = FastMCP("agent-ia-mcp", stateless_http=True, json_response=True)
 
-
+# ---------------- Helpers ----------------
 def _atlassian_auth() -> httpx.BasicAuth:
-    # Atlassian Cloud: basic auth = email + API token
     return httpx.BasicAuth(ATLASSIAN_EMAIL, ATLASSIAN_API_TOKEN)
 
+def _ensure_atlassian_enabled() -> None:
+    if not ENABLE_ATLASSIAN_TOOLS:
+        raise RuntimeError("Atlassian tools are disabled. Set ENABLE_ATLASSIAN_TOOLS=true")
+    if not (ATLASSIAN_BASE_URL and ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN):
+        raise RuntimeError("Missing ATLASSIAN_BASE_URL / ATLASSIAN_EMAIL / ATLASSIAN_API_TOKEN")
 
-async def _ollama_post(path: str, payload: Dict[str, Any], timeout_s: float = 120) -> Dict[str, Any]:
+async def _ollama_post_raw(path: str, payload: Dict[str, Any], timeout_s: float = 120) -> httpx.Response:
     async with httpx.AsyncClient(timeout=timeout_s) as client:
-        r = await client.post(f"{OLLAMA_URL}{path}", json=payload)
-        r.raise_for_status()
-        return r.json()
+        return await client.post(f"{OLLAMA_URL}{path}", json=payload)
 
-
+# ---------------- Tools ----------------
 @mcp.tool()
 async def ollama_generate(
     model: str,
@@ -50,25 +54,59 @@ async def ollama_generate(
     system: Optional[str] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
+    """
+    Génération texte.
+    - tente /api/generate (API Ollama "native")
+    - si 404, fallback /v1/chat/completions (API OpenAI compatible)
+    """
+    payload_native: Dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
     if system:
-        payload["system"] = system
+        payload_native["system"] = system
     if options:
-        payload["options"] = options
-    data = await _ollama_post("/api/generate", payload, timeout_s=180)
+        payload_native["options"] = options
+
+    r = await _ollama_post_raw("/api/generate", payload_native, timeout_s=180)
+
+    if r.status_code == 404:
+        # Fallback OpenAI-compatible
+        messages: List[Dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        r2 = await _ollama_post_raw(
+            "/v1/chat/completions",
+            {"model": model, "messages": messages},
+            timeout_s=180,
+        )
+        r2.raise_for_status()
+        data2 = r2.json()
+        text = data2.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return {"model": model, "response": text, "raw": data2}
+
+    r.raise_for_status()
+    data = r.json()
     return {"model": model, "response": data.get("response", ""), "raw": data}
 
-
 @mcp.tool()
-async def ollama_embed(
-    model: str,
-    input: str,
-) -> Dict[str, Any]:
-    # Ollama embeddings endpoint
-    data = await _ollama_post("/api/embeddings", {"model": model, "prompt": input}, timeout_s=60)
-    # response typically contains: {"embedding":[...]}
-    return {"model": model, "embedding": data.get("embedding", []), "raw": data}
+async def ollama_embed(model: str, input: str) -> Dict[str, Any]:
+    """
+    Embeddings.
+    - tente /api/embeddings (API Ollama "native")
+    - si 404, fallback /v1/embeddings (API OpenAI compatible)
+    """
+    r = await _ollama_post_raw("/api/embeddings", {"model": model, "prompt": input}, timeout_s=60)
 
+    if r.status_code == 404:
+        r2 = await _ollama_post_raw("/v1/embeddings", {"model": model, "input": input}, timeout_s=60)
+        r2.raise_for_status()
+        data2 = r2.json()
+        emb = (data2.get("data") or [{}])[0].get("embedding", [])
+        return {"model": model, "embedding": emb, "raw": data2}
+
+    r.raise_for_status()
+    data = r.json()
+    return {"model": model, "embedding": data.get("embedding", []), "raw": data}
 
 @mcp.tool()
 async def qdrant_search(
@@ -92,16 +130,7 @@ async def qdrant_search(
         "hits": [{"id": h.id, "score": h.score, "payload": h.payload} for h in hits],
     }
 
-
-# ---------- Atlassian tools (guardés) ----------
-
-def _ensure_atlassian_enabled() -> None:
-    if not ENABLE_ATLASSIAN_TOOLS:
-        raise RuntimeError("Atlassian tools are disabled. Set ENABLE_ATLASSIAN_TOOLS=true")
-    if not (ATLASSIAN_BASE_URL and ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN):
-        raise RuntimeError("Missing ATLASSIAN_BASE_URL / ATLASSIAN_EMAIL / ATLASSIAN_API_TOKEN")
-
-
+# ---- Atlassian tools (guarded) ----
 @mcp.tool()
 async def confluence_publish_page(
     title: str,
@@ -137,7 +166,6 @@ async def confluence_publish_page(
         "raw": data,
     }
 
-
 @mcp.tool()
 async def jira_create_issue(
     summary: str,
@@ -159,17 +187,14 @@ async def jira_create_issue(
         "description": description,
     }
 
-    # Epic: certains Jira exigent un champ custom "Epic Name"
     if issue_type.lower() == "epic" and epic_name and JIRA_EPIC_NAME_FIELD:
         fields[JIRA_EPIC_NAME_FIELD] = epic_name
 
     if additional_fields:
         fields.update(additional_fields)
 
-    payload = {"fields": fields}
-
     async with httpx.AsyncClient(timeout=60, auth=_atlassian_auth()) as client:
-        r = await client.post(f"{ATLASSIAN_BASE_URL}/rest/api/3/issue", json=payload)
+        r = await client.post(f"{ATLASSIAN_BASE_URL}/rest/api/3/issue", json={"fields": fields})
         r.raise_for_status()
         data = r.json()
 
@@ -181,22 +206,9 @@ async def jira_create_issue(
         "raw": data,
     }
 
-
 @mcp.tool()
-async def jira_create_epic(
-    summary: str,
-    description: str,
-    epic_name: str,
-    project_key: Optional[str] = None,
-) -> Dict[str, Any]:
-    return await jira_create_issue(
-        summary=summary,
-        description=description,
-        issue_type="Epic",
-        project_key=project_key,
-        epic_name=epic_name,
-    )
-
+async def jira_create_epic(summary: str, description: str, epic_name: str, project_key: Optional[str] = None) -> Dict[str, Any]:
+    return await jira_create_issue(summary, description, "Epic", project_key=project_key, epic_name=epic_name)
 
 @mcp.tool()
 async def jira_create_story(
@@ -205,14 +217,7 @@ async def jira_create_story(
     project_key: Optional[str] = None,
     additional_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return await jira_create_issue(
-        summary=summary,
-        description=description,
-        issue_type="Story",
-        project_key=project_key,
-        additional_fields=additional_fields,
-    )
-
+    return await jira_create_issue(summary, description, "Story", project_key=project_key, additional_fields=additional_fields)
 
 @mcp.tool()
 async def jira_create_task(
@@ -221,28 +226,41 @@ async def jira_create_task(
     project_key: Optional[str] = None,
     additional_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return await jira_create_issue(
-        summary=summary,
-        description=description,
-        issue_type="Task",
-        project_key=project_key,
-        additional_fields=additional_fields,
-    )
+    return await jira_create_issue(summary, description, "Task", project_key=project_key, additional_fields=additional_fields)
 
-
-# ---------- Debug endpoints HTTP (pour Postman) ----------
+# ---------------- Debug HTTP endpoints ----------------
 async def health(_):
     return JSONResponse({"ok": True, "atlassian_enabled": ENABLE_ATLASSIAN_TOOLS})
 
 async def tools(_):
     t = await mcp.list_tools()
     tool_list = t.tools if hasattr(t, "tools") else t
-    return JSONResponse({"tools": [{"name": x.name, "description": x.description} for x in tool_list]})
+    return JSONResponse({"tools": [{"name": x.name, "description": x.description or ""} for x in tool_list]})
 
+async def call_tool(request: Request):
+    """
+    Endpoint HTTP stable: exécute un tool MCP sans utiliser le client protocolaire.
+    Body:
+      { "tool": "ollama_generate", "args": { ... } }
+    """
+    payload = await request.json()
+    tool = payload.get("tool")
+    args = payload.get("args", {})
+
+    if not tool:
+        return JSONResponse({"error": "Missing 'tool' in body"}, status_code=400)
+
+    try:
+        result = await mcp.call_tool(tool, args)
+        content = getattr(result, "content", result)
+        return JSONResponse({"tool": tool, "content": content})
+    except Exception as e:
+        return JSONResponse({"tool": tool, "error": repr(e), "message": str(e)}, status_code=500)
 
 routes = [
     Route("/health", health, methods=["GET"]),
     Route("/tools", tools, methods=["GET"]),
+    Route("/call", call_tool, methods=["POST"]),
     Mount(MCP_MOUNT_PATH, app=mcp.streamable_http_app()),
 ]
 
